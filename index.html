@@ -54,7 +54,6 @@
         background-color: white;
     }
 
-    /* Readonly ID field style */
     input[readonly] {
         background-color: #f9f9f9;
         color: #005bbb;
@@ -148,8 +147,9 @@
 </div>
 
 <script>
-    // CSV URL
-    const paymentCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTAwqKg4QjdIUWQ31Nxl7wnkIRpx_H80Ddd7lsW4s0bgVowNL2xFSPhOYcB-RwwrO7b0x5lF61Yv03D/pub?gid=239856359&single=true&output=csv";
+    // CSV URLs
+    const tnxCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTAwqKg4QjdIUWQ31Nxl7wnkIRpx_H80Ddd7lsW4s0bgVowNL2xFSPhOYcB-RwwrO7b0x5lF61Yv03D/pub?gid=239856359&single=true&output=csv";
+    const nameListCsvUrl = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTAwqKg4QjdIUWQ31Nxl7wnkIRpx_H80Ddd7lsW4s0bgVowNL2xFSPhOYcB-RwwrO7b0x5lF61Yv03D/pub?gid=1258553023&single=true&output=csv";
 
     const tnxInput = document.getElementById('tnxId');
     const suggestLabel = document.getElementById('suggestLabel');
@@ -160,57 +160,53 @@
 
     async function loadDataFromSheet() {
         try {
-            const response = await fetch(paymentCsvUrl);
-            const csvText = await response.text();
-            
-            // CSV parsing manually to handle rows correctly
-            const rows = csvText.split(/\r?\n/).slice(1);
+            // 1. Fetching TNX-ID to generate next ID
+            const tnxResponse = await fetch(tnxCsvUrl);
+            const tnxCsvText = await tnxResponse.text();
+            const tnxRows = tnxCsvText.split(/\r?\n/).slice(1);
             
             let maxNum = 0;
-            let payers = new Set();
-
-            rows.forEach(row => {
-                // Split by comma but ignore commas inside quotes
+            tnxRows.forEach(row => {
                 const cols = row.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-                
                 if (cols.length > 1) {
-                    // 1. Get TNX-ID from Column B (Index 1)
                     let idVal = cols[1].replace(/"/g, '').trim();
                     if (idVal.includes('-')) {
                         let numPart = parseInt(idVal.split('-')[1]);
                         if (!isNaN(numPart) && numPart > maxNum) maxNum = numPart;
                     }
-
-                    // 2. Get Payer Name from Column G (Index 6)
-                    if (cols.length >= 7) {
-                        let payerName = cols[6].replace(/"/g, '').trim();
-                        if (payerName) payers.add(payerName);
-                    }
                 }
             });
-
-            // Set Next ID
             const nextId = "SCMS-" + (maxNum + 1);
             tnxInput.value = nextId;
             suggestLabel.innerText = "Current ID: " + nextId;
 
-            // Fill Dropdown
+            // 2. Fetching Names for Dropdown (Column A from new link)
+            const nameResponse = await fetch(nameListCsvUrl);
+            const nameCsvText = await nameResponse.text();
+            const nameRows = nameCsvText.split(/\r?\n/).slice(1); 
+
             paymentDropdown.innerHTML = '<option value="">-- Select Payer Name --</option>';
-            const sortedPayers = Array.from(payers).sort();
-            if (sortedPayers.length > 0) {
-                sortedPayers.forEach(name => {
+            let nameCount = 0;
+
+            nameRows.forEach(row => {
+                // Splits by comma and takes the first column (Column A)
+                let name = row.split(',')[0].replace(/"/g, '').trim(); 
+                if (name) {
                     let opt = document.createElement('option');
                     opt.value = name;
                     opt.text = name;
                     paymentDropdown.appendChild(opt);
-                });
-            } else {
-                paymentDropdown.innerHTML = '<option value="">No names found in Column G</option>';
+                    nameCount++;
+                }
+            });
+
+            if(nameCount === 0) {
+                paymentDropdown.innerHTML = '<option value="">No names found in Sheet</option>';
             }
 
         } catch (e) {
             console.error(e);
-            suggestLabel.innerText = "Error loading ID";
+            suggestLabel.innerText = "Error syncing data";
             paymentDropdown.innerHTML = '<option value="">Load Failed</option>';
         }
     }
@@ -231,6 +227,7 @@
         if(isSubmitting) {
             popup.style.display = "flex";
             isSubmitting = false;
+            document.getElementById('submitBtn').innerText = "Submit Payment";
         }
     };
 </script>
